@@ -35,6 +35,7 @@ Create a workflow yaml file (for e.g. `.github/workflows/update-pr.yml`). See [C
 - `title-template` and `body-template` can contain any of the following tokens (can be repeated if required) which will be replaced by the matched text from branch name:
   - `%basebranch%`
   - `%headbranch%`
+- `title-template` and `body-template` can contain `%prnumber%`, which will be replaced by the PR number.
 - `title-update-action` and `body-update-action` can be set to one of the following values:
   - `prefix`
   - `suffix`

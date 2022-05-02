@@ -5,6 +5,7 @@ async function run() {
   try {
     const baseTokenRegex = new RegExp('%basebranch%', "g");
     const headTokenRegex = new RegExp('%headbranch%', "g");
+    const prNumberRegex = new RegExp('%prnumber%', "g");
 
     const inputs = {
       token: core.getInput('repo-token', {required: true}),
@@ -84,7 +85,8 @@ async function run() {
     const title = github.context.payload.pull_request.title || '';
     const processedTitleText = inputs.titleTemplate
       .replace(baseTokenRegex, upperCase(inputs.titleUppercaseBaseMatch, matches.baseMatch))
-      .replace(headTokenRegex, upperCase(inputs.titleUppercaseHeadMatch, matches.headMatch));
+      .replace(headTokenRegex, upperCase(inputs.titleUppercaseHeadMatch, matches.headMatch))
+      .replace(prNumberRegex, github.context.payload.pull_request.number);
     core.info(`Processed title text: ${processedTitleText}`);
 
     const updateTitle = ({
@@ -109,7 +111,8 @@ async function run() {
     const body = github.context.payload.pull_request.body || '';
     const processedBodyText = inputs.bodyTemplate
       .replace(baseTokenRegex, upperCase(inputs.bodyUppercaseBaseMatch, matches.baseMatch))
-      .replace(headTokenRegex, upperCase(inputs.bodyUppercaseHeadMatch, matches.headMatch));
+      .replace(headTokenRegex, upperCase(inputs.bodyUppercaseHeadMatch, matches.headMatch))
+      .replace(prNumberRegex, github.context.payload.pull_request.number);
     core.info(`Processed body text: ${processedBodyText}`);
 
     const updateBody = ({
