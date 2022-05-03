@@ -6,6 +6,7 @@ async function run() {
     const baseTokenRegex = new RegExp('%basebranch%', "g");
     const headTokenRegex = new RegExp('%headbranch%', "g");
     const prNumberRegex = new RegExp('%prnumber%', "g");
+    const noMatchRegex = new RegExp('%NOMATCH%', "g");
 
     const inputs = {
       token: core.getInput('repo-token', {required: true}),
@@ -23,23 +24,14 @@ async function run() {
       bodyUppercaseBaseMatch: (core.getInput('body-uppercase-base-match').toLowerCase() === 'true'),
       bodyUppercaseHeadMatch: (core.getInput('body-uppercase-head-match').toLowerCase() === 'true'),
     }
-
+    
     const baseBranchRegex = inputs.baseBranchRegex.trim();
     const matchBaseBranch = baseBranchRegex.length > 0;
-
+    
     const headBranchRegex = inputs.headBranchRegex.trim();
     const matchHeadBranch = headBranchRegex.length > 0;
 
-    if (!matchBaseBranch && !matchHeadBranch) {
-      core.setFailed('No branch regex values have been specified');
-      return;
-    }
-
-    const matches = {
-      baseMatch: '',
-      headMatch: '',
-    }
-
+    let baseMatch = '%NOMATCH%';
     if (matchBaseBranch) {
       const baseBranchName = github.context.payload.pull_request.base.ref;
       const baseBranch = inputs.lowercaseBranch ? baseBranchName.toLowerCase() : baseBranchName;
@@ -47,16 +39,16 @@ async function run() {
 
       const baseMatches = baseBranch.match(new RegExp(baseBranchRegex));
       if (!baseMatches) {
-        core.setFailed('Base branch name does not match given regex');
-        return;
+        core.info('Base branch name does not match given regex');
+      } else {
+        baseMatch = baseMatches[0];
+        core.info(`Matched base branch text: ${baseMatch}`);
+
+        core.setOutput('baseMatch', baseMatch);
       }
-
-      matches.baseMatch = baseMatches[0];
-      core.info(`Matched base branch text: ${matches.baseMatch}`);
-
-      core.setOutput('baseMatch', matches.baseMatch);
     }
 
+    let headMatch = '%NOMATCH%';
     if (matchHeadBranch) {
       const headBranchName = github.context.payload.pull_request.head.ref;
       const headBranch = inputs.lowercaseBranch ? headBranchName.toLowerCase() : headBranchName;
@@ -64,14 +56,13 @@ async function run() {
 
       const headMatches = headBranch.match(new RegExp(headBranchRegex));
       if (!headMatches) {
-        core.setFailed('Head branch name does not match given regex');
-        return;
+        core.info('Head branch name does not match given regex');
+      } else {
+        headMatch = headMatches[0];
+        core.info(`Matched head branch text: ${headMatch}`);
+
+        core.setOutput('headMatch', headMatch);
       }
-
-      matches.headMatch = headMatches[0];
-      core.info(`Matched head branch text: ${matches.headMatch}`);
-
-      core.setOutput('headMatch', matches.headMatch);
     }
 
     const request = {
@@ -84,9 +75,15 @@ async function run() {
 
     const title = github.context.payload.pull_request.title || '';
     const processedTitleText = inputs.titleTemplate
-      .replace(baseTokenRegex, upperCase(inputs.titleUppercaseBaseMatch, matches.baseMatch))
-      .replace(headTokenRegex, upperCase(inputs.titleUppercaseHeadMatch, matches.headMatch))
-      .replace(prNumberRegex, github.context.payload.pull_request.number);
+      .split('\n')
+      .map(line => { 
+        return line
+          .replace(baseTokenRegex, upperCase(inputs.bodyUppercaseBaseMatch, baseMatch))
+          .replace(headTokenRegex, upperCase(inputs.bodyUppercaseHeadMatch, headMatch))
+          .replace(prNumberRegex, github.context.payload.pull_request.number);
+      })
+      .filter(line => line.match(noMatchRegex) === null)
+      .join(inputs.titleInsertSpace ? ' ': '');
     core.info(`Processed title text: ${processedTitleText}`);
 
     const updateTitle = ({
@@ -94,8 +91,6 @@ async function run() {
       suffix: !title.toLowerCase().endsWith(processedTitleText.toLowerCase()),
       replace: title.toLowerCase() !== processedTitleText.toLowerCase(),
     })[inputs.titleUpdateAction] || false;
-
-    core.setOutput('titleUpdated', updateTitle.toString());
 
     if (updateTitle) {
       request.title = ({
@@ -105,14 +100,21 @@ async function run() {
       })[inputs.titleUpdateAction];
       core.info(`New title: ${request.title}`);
     } else {
-      core.warning('No updates were made to PR title');
+      core.info('No updates were made to PR title');
     }
+    core.setOutput('titleUpdated', updateTitle.toString());
 
     const body = github.context.payload.pull_request.body || '';
     const processedBodyText = inputs.bodyTemplate
-      .replace(baseTokenRegex, upperCase(inputs.bodyUppercaseBaseMatch, matches.baseMatch))
-      .replace(headTokenRegex, upperCase(inputs.bodyUppercaseHeadMatch, matches.headMatch))
-      .replace(prNumberRegex, github.context.payload.pull_request.number);
+      .split('\n')
+      .map(line => { 
+        return line
+          .replace(baseTokenRegex, upperCase(inputs.bodyUppercaseBaseMatch, baseMatch))
+          .replace(headTokenRegex, upperCase(inputs.bodyUppercaseHeadMatch, headMatch))
+          .replace(prNumberRegex, github.context.payload.pull_request.number);
+      })
+      .filter(line => line.match(noMatchRegex) === null)
+      .join('\n');
     core.info(`Processed body text: ${processedBodyText}`);
 
     const updateBody = ({
@@ -131,7 +133,7 @@ async function run() {
       })[inputs.bodyUpdateAction];
       core.debug(`New body: ${request.body}`);
     } else {
-      core.warning('No updates were made to PR body');
+      core.info('No updates were made to PR body');
     }
 
     if (!updateTitle && !updateBody) {
